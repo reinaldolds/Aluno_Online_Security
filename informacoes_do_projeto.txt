@@ -1,0 +1,213 @@
+		Adicionando Spring security na API AlunoOnline
+
+
+1- adicionar as dependências do spring security no pom.xml
+
+<!-- Spring Security -->
+<dependency>
+  <groupId>org.springframework.boot</groupId>
+  <artifactId>spring-boot-starter-security</artifactId>
+</dependency>
+
+<!-- JWT (Auth0) -->
+<dependency>
+  <groupId>com.auth0</groupId>
+  <artifactId>java-jwt</artifactId>
+  <version>4.4.0</version>
+</dependency>
+
+2. Criar as classes de segurança
+Pacote: com.seuprojeto.infra.security
+Dentro desse pacote, você vai criar:
+
+SecurityConfigurations.java
+
+SecurityFilter.java
+
+TokenService.java
+
+DTOs: DadosAutenticacao.java e DadosTokenJWT.java
+
+3- Criar o usuário do sistema
+ Entidade Usuario.java (ou Admin, ou Professor, depende)
+
+@Entity
+@Table(name = "usuarios")
+public class Usuario implements UserDetails {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    private String login;
+    private String senha;
+
+    @Override
+    public Collection<? extends GrantedAuthority> getAuthorities() {
+        return List.of(new SimpleGrantedAuthority("ROLE_USER"));
+    }
+
+    @Override
+    public String getPassword() {
+        return senha;
+    }
+
+    @Override
+    public String getUsername() {
+        return login;
+    }
+
+    // + métodos obrigatórios (isAccountNonExpired, isAccountNonLocked, etc)
+}
+
+4- Interface UsuarioRepository.java
+@Repository
+public interface UsuarioRepository extends JpaRepository<Usuario, Long> {
+    Usuario findByLogin(String login);
+}
+
+5- Configurar o SecurityConfigurations.java
+Essa classe controla quem precisa estar autenticado:
+@Configuration
+@EnableWebSecurity
+public class SecurityConfigurations {
+
+    @Autowired
+    private SecurityFilter securityFilter;
+
+    @Bean
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        return http.csrf(csrf -> csrf.disable())
+                   .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                   .authorizeHttpRequests(auth -> auth
+                       .requestMatchers("/login").permitAll()
+                       .anyRequest().authenticated()
+                   )
+                   .addFilterBefore(securityFilter, UsernamePasswordAuthenticationFilter.class)
+                   .build();
+    }
+
+    @Bean
+    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
+        return config.getAuthenticationManager();
+    }
+
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
+}
+
+6- Criar o AutenticacaoController
+Responsável por receber login e devolver o token:
+@RestController
+@RequestMapping("/login")
+public class AutenticacaoController {
+
+    @Autowired
+    private AuthenticationManager manager;
+
+    @Autowired
+    private TokenService tokenService;
+
+    @PostMapping
+    public ResponseEntity efetuarLogin(@RequestBody @Valid DadosAutenticacao dados) {
+        var tokenAutenticacao = new UsernamePasswordAuthenticationToken(dados.login(), dados.senha());
+        var authentication = manager.authenticate(tokenAutenticacao);
+        var tokenJWT = tokenService.gerarToken((Usuario) authentication.getPrincipal());
+        return ResponseEntity.ok(new DadosTokenJWT(tokenJWT));
+    }
+}
+
+7-Criar DTOs
+DadosAutenticacao.java
+public record DadosAutenticacao(String login, String senha) {}
+DadosTokenJWT.java
+public record DadosTokenJWT(String token) {}
+
+8- Criar o TokenService.java
+Responsável por gerar e validar o token JWT:
+@Service
+public class TokenService {
+
+    @Value("${api.security.token.secret}")
+    private String secret;
+
+    public String gerarToken(Usuario usuario) {
+        Algorithm algorithm = Algorithm.HMAC256(secret);
+        return JWT.create()
+                  .withSubject(usuario.getLogin())
+                  .withIssuer("API AlunoOnline")
+                  .withExpiresAt(LocalDateTime.now().plusHours(2).toInstant(ZoneOffset.of("-03:00")))
+                  .sign(algorithm);
+    }
+
+    public String getSubject(String token) {
+        Algorithm algorithm = Algorithm.HMAC256(secret);
+        return JWT.require(algorithm)
+                  .withIssuer("API AlunoOnline")
+                  .build()
+                  .verify(token)
+                  .getSubject();
+    }
+}
+
+9-Criar o SecurityFilter.java
+Esse filtro valida o token nas requisições:
+@Component
+public class SecurityFilter extends OncePerRequestFilter {
+
+    @Autowired
+    private TokenService tokenService;
+
+    @Autowired
+    private UsuarioRepository repository;
+
+    @Override
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+            throws ServletException, IOException {
+
+        String token = recuperarToken(request);
+
+        if (token != null) {
+            String subject = tokenService.getSubject(token);
+            Usuario usuario = repository.findByLogin(subject);
+
+            var authentication = new UsernamePasswordAuthenticationToken(usuario, null, usuario.getAuthorities());
+            SecurityContextHolder.getContext().setAuthentication(authentication);
+        }
+
+        filterChain.doFilter(request, response);
+    }
+
+    private String recuperarToken(HttpServletRequest request) {
+        String authHeader = request.getHeader("Authorization");
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            return authHeader.substring(7);
+        }
+        return null;
+    }
+}
+
+10- Configurar o application.properties
+No seu src/main/resources/application.properties, adicione:
+api.security.token.secret=${JWT_SECRET}
+
+**********
+(obs, no banco > login: 'Reinaldo', senha:'$2a$12$GhGrQMH0BAJy16kJwEfpfubU9lrAgCX/7IsRutKEp6fMXCDhQeD3G')
+(obs, o token gerado > "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJBbHVub19PbmxpbmVfU2VjdXJpdHkiLCJzdWIiOiJSZWluYWxkbyIsImV4cCI6MTc3NzMwNTU1NX0.h8ZAqZBQAWlW9PiF5fz9C6E9CUE_Zq0iPs6Vj3e4kMg")
+************
+11- Rode a aplicação.
+No Insomnia ou Postman:
+Faça um POST em /login com login e senha.
+Copie o token.
+Em todas as outras requisições, mande o token no cabeçalho Authorization:
+Authorization: Bearer SEU_TOKEN_AQUI
+
+Agora apenas usuários autenticados conseguem acessar as rotas 
+(cadastro, notas, matrícula, etc).
+
+(obs: troquei no application.properties: api.security.token.secret=${JWT_SECRET}
+por: api.security.token.secret=SENHA123456 
+pq estava dando erro ao buscar a variável de ambiente)
+
+ 
