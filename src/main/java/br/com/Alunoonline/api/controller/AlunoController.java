@@ -5,6 +5,7 @@ import br.com.Alunoonline.api.model.Aluno;
 import br.com.Alunoonline.api.service.AlunoService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -19,7 +20,8 @@ public class AlunoController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.ACCEPTED)
-    public void criarAluno(@RequestBody Aluno aluno){
+    public void criarAluno(@RequestBody Aluno aluno,
+                           @AuthenticationPrincipal String username ){
 
         alunoService.criarAluno(aluno);
     }
