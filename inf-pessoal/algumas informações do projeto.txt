@@ -5,3 +5,7 @@ usuário: Reinaldo
 senha criptografada(12345678):
 $2a$12$JLbeh02yYRbIbUoiBI7kkOLUd7ERbgkHJ5VsAUbqhmm2gjwhZ5FPG
 
+
+url da documentação do Swagger: 
+http://localhost:8080/swagger-ui/index.html
+
