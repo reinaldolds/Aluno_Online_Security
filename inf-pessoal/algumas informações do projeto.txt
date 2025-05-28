@@ -9,3 +9,24 @@ $2a$12$JLbeh02yYRbIbUoiBI7kkOLUd7ERbgkHJ5VsAUbqhmm2gjwhZ5FPG
 url da documentação do Swagger: 
 http://localhost:8080/swagger-ui/index.html
 
+*****************dicas de como usar Doc Swagger no cód***********************
+Acima da classe:
+@Tag(name = "Alunos", description = "Operações de gerenciamento de alunos")
+
+Acima do método(https):
+ @Operation(summary = "Atualiza aluno pro ID")
+ @ApiResponse(responseCode = "200", description = "Faz atualização do aluno no banco de dados pelo ID")
+
+
+
+ Dica Rápida para Modelos
+Adicione @Schema nas suas classes de modelo:
+
+java
+public class Aluno {
+    @Schema(description = "ID único do aluno", example = "1")
+    private Long id;
+    
+    @Schema(description = "Nome completo", example = "João Silva")
+    private String nome;
+}
